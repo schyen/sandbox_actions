@@ -1,0 +1,21 @@
+name: Validate PR Label
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize]
+
+jobs:
+  validate-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require one of fix/feat/break labels
+        run: |
+          labels=$(echo "${{ toJson(github.event.pull_request.labels) }}" | jq -r '.[].name')
+          echo "Found labels: $labels"
+
+          if echo "$labels" | grep -Eq '^(fix|feat|break)$' || echo "$labels" | grep -E '\b(fix|feat|break)\b'; then
+            echo "✅ Valid label present"
+          else
+            echo "❌ Pull request must include one of: fix, feat, break"
+            exit 1
+          fi
