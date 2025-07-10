@@ -24,7 +24,7 @@ jobs:
         run: |
           echo "PR Labels: $PR_LABELS"
           # Count how many of fix, feat, break labels present
-          count=$(echo "$PR_LABELS" | jq -R 'split(" ")' | jq '[.[] | select(. == "fix" or . == "feat" or . == "break")] | length')
+          count=$(echo "$PR_LABELS" | jq '[.[] | select(. == "fix" or . == "feat" or . == "break")] | length')
 
           echo "Found $count special label(s)"
 
