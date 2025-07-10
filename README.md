@@ -6,3 +6,5 @@ Labelling PR with "fix" "feat" or "break" will increment respective version numb
 Workflow fails without appropriate labels
 
 Workflow updates the version number in setup.py now
+
+PRs must contain only one of "break" "feat" or "fix" and this workflow is triggered every time a PR label is changed
