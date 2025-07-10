@@ -5,23 +5,10 @@ on:
     types: [closed]
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      version_level:
-        description: "Increment version number on PR merge"
-        required: false
-        default: patch
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 jobs:
   tag:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
@@ -32,19 +19,21 @@ jobs:
 
       - name: Fetch all tags
         run: git fetch --tags --force
+
       - name: Debug tags
         run: |
           git tag --sort=-creatordate
           git show-ref --tags
+
       - name: Get latest tag
         id: get_latest_tag
         run: |
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $latest_tag"
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
       - name: Fetch PR labels
         id: pr_labels
-        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -59,8 +48,6 @@ jobs:
       - name: Determine bump level and bump tag version
         id: bump_version
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION_LEVEL: ${{ github.event.inputs.version_level }}
           PR_LABELS: ${{ steps.pr_labels.outputs.labels }}
         run: |
           latest=${{ steps.get_latest_tag.outputs.latest_tag }}
@@ -68,21 +55,17 @@ jobs:
 
           level=""
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            level="$INPUT_VERSION_LEVEL"
-          else
-            echo "Detecting bump level from PR labels: $PR_LABELS"
+          echo "Detecting bump level from PR labels: $PR_LABELS"
 
-            if echo "$PR_LABELS" | grep -iq 'break'; then
-              level="major"
-            elif echo "$PR_LABELS" | grep -iq 'feat'; then
-              level="minor"
-            elif echo "$PR_LABELS" | grep -iq 'fix'; then
-              level="patch"
-            else
-              echo "❌ No valid label ('break', 'feat', 'fix') found on PR. Failing the workflow."
-              exit 1
-            fi
+          if echo "$PR_LABELS" | grep -iq 'break'; then
+            level="major"
+          elif echo "$PR_LABELS" | grep -iq 'feat'; then
+            level="minor"
+          elif echo "$PR_LABELS" | grep -iq 'fix'; then
+            level="patch"
+          else
+            echo "❌ No valid label ('break', 'feat', 'fix') found on PR. Failing the workflow."
+            exit 1
           fi
 
           echo "Determined bump level: $level"
@@ -108,16 +91,16 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+
       - name: Set SSH remote
         run: |
           git remote set-url origin git@github.com:${{ github.repository }}.git
+
       - name: Update version in setup.py
         run: |
           new_version=${{ steps.bump_version.outputs.new_tag }}
           clean_version="${new_version#v}"  # Remove the "v" prefix
           echo "Updating setup.py to version $clean_version"
-      
-          # Replace version="..." or version='...'
           sed -i -E "s/version\s*=\s*['\"][0-9]+\.[0-9]+\.[0-9]+['\"]/version=\"$clean_version\"/" setup.py
 
       - name: Commit and push setup.py file
@@ -127,6 +110,7 @@ jobs:
           git add setup.py
           git commit -m "chore: update setup.py to ${{ steps.bump_version.outputs.new_tag }}" || echo "No changes to commit"
           git push origin main
+
       - name: Push tag
         run: |
           git config user.name "github-actions[bot]"
