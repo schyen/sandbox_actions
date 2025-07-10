@@ -57,14 +57,14 @@ jobs:
 
           echo "Detecting bump level from PR labels: $PR_LABELS"
 
-          if echo "$PR_LABELS" | grep -iq 'break'; then
+          if echo "$PR_LABELS" | grep -iq 'major'; then
             level="major"
-          elif echo "$PR_LABELS" | grep -iq 'feat'; then
+          elif echo "$PR_LABELS" | grep -iq 'minor'; then
             level="minor"
-          elif echo "$PR_LABELS" | grep -iq 'fix'; then
+          elif echo "$PR_LABELS" | grep -iq 'patch'; then
             level="patch"
           else
-            echo "❌ No valid label ('break', 'feat', 'fix') found on PR. Failing the workflow."
+            echo "❌ No valid label ('major', 'minor', 'patch') found on PR. Failing the workflow."
             exit 1
           fi
 
