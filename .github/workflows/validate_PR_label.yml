@@ -9,7 +9,6 @@ on:
       - labeled
       - unlabeled
 
-
 jobs:
   validate-labels:
     runs-on: ubuntu-latest
@@ -19,7 +18,12 @@ jobs:
           labels_json="${{ toJson(github.event.pull_request.labels) }}"
           echo "Labels JSON: $labels_json"
 
-          special_count=$(echo "$labels_json" | grep -o '"name":"[^"]*"' | grep -E '"name":"(fix|feat|break)"' | wc -l)
+          # Count how many of the special labels exist
+          special_count=$(echo "$labels_json" \
+            | grep -o '"name":"[^"]*"' \
+            | grep -E '"name":"(fix|feat|break)"' \
+            | wc -l)
+
           echo "Found $special_count special label(s)"
 
           if [ "$special_count" -eq 1 ]; then
