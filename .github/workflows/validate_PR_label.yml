@@ -1,3 +1,5 @@
+name: Validate PR Labels
+
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled]
@@ -23,14 +25,14 @@ jobs:
           PR_LABELS: ${{ steps.pr_labels.outputs.result }}
         run: |
           echo "PR Labels: $PR_LABELS"
-          # Count how many of fix, feat, break labels present
-          count=$(echo "$PR_LABELS" | jq '[.[] | select(. == "fix" or . == "feat" or . == "break")] | length')
+          # Count how many of major, minor, patch labels present
+          count=$(echo "$PR_LABELS" | jq '[.[] | select(. == "patch" or . == "minor" or . == "major")] | length')
 
           echo "Found $count special label(s)"
 
           if [ "$count" -eq 1 ]; then
             echo "✅ Exactly one valid label found."
           else
-            echo "❌ PR must have exactly one of: fix, feat, or break."
+            echo "❌ PR must have exactly one of: patch, minor, or major."
             exit 1
           fi
