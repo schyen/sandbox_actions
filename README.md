@@ -7,4 +7,5 @@ Workflow fails without appropriate labels
 
 Workflow updates the version number in setup.py now
 
-validate PR labels
+PRs must contain only one of "break" "feat" or "fix" and this workflow is triggered every time a PR label is changed
+
