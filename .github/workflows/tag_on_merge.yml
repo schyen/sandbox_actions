@@ -42,18 +42,30 @@ jobs:
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $latest_tag"
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+      - name: Fetch PR labels
+        id: pr_labels
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber
+            });
+            core.setOutput("labels", JSON.stringify(labels.map(l => l.name)));
 
       - name: Determine bump level and bump tag version
         id: bump_version
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION_LEVEL: ${{ github.event.inputs.version_level }}
-          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+          PR_LABELS: ${{ steps.pr_labels.outputs.labels }}
         run: |
           latest=${{ steps.get_latest_tag.outputs.latest_tag }}
           echo "Latest tag: $latest"
 
-          # Default bump level
           level=""
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -61,12 +73,15 @@ jobs:
           else
             echo "Detecting bump level from PR labels: $PR_LABELS"
 
-            if echo "$PR_LABELS" | grep -iq '"name":"breaking"'; then
+            if echo "$PR_LABELS" | grep -iq 'break'; then
               level="major"
-            elif echo "$PR_LABELS" | grep -iq '"name":"feat"'; then
+            elif echo "$PR_LABELS" | grep -iq 'feat'; then
               level="minor"
-            else
+            elif echo "$PR_LABELS" | grep -iq 'fix'; then
               level="patch"
+            else
+              echo "❌ No valid label ('break', 'feat', 'fix') found on PR. Failing the workflow."
+              exit 1
             fi
           fi
 
@@ -86,6 +101,7 @@ jobs:
           new_tag="v$major.$minor.$patch"
           echo "New tag: $new_tag"
           echo "new_tag=$new_tag" >> "$GITHUB_OUTPUT"
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
