@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Check for exactly one of: fix, feat, break
         run: |
-          labels_json="${{ toJson(github.event.pull_request.labels) }}"
+          labels_json='${{ toJson(github.event.pull_request.labels) }}'
           echo "Labels JSON: $labels_json"
 
           special_count=$(echo "$labels_json" | grep -o '"name":"[^"]*"' | grep -E '"name":"(fix|feat|break)"' | wc -l)
