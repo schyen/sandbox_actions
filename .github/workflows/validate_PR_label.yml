@@ -13,7 +13,7 @@ jobs:
   validate-labels:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for exactly one of: fix, feat, break
+      - name: Check for exactly one of fix, feat, break
         run: |
           labels_json="${{ toJson(github.event.pull_request.labels) }}"
           echo "Labels JSON: $labels_json"
