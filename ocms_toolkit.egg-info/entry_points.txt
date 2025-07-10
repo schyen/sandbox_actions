@@ -1,0 +1,2 @@
+[console_scripts]
+ocms_toolkit = ocmstoolkit.ocms_toolkit:main

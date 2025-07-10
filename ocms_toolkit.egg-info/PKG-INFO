@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: ocms_toolkit
+Version: 1.0.1
+Summary: OCMS_Toolkit : Oxford Centre for Microbiome Studies bioinformatic scripts
+Home-page: https://github.com/OxfordCMS/OCMS_Toolkit
+Author: Sandi Yen, Nicholas Ilott, Jethro Johnson
+License: MIT
+Keywords: OCMS,bioinformatics,python
+Platform: any
+Requires-Python: >=3.8.2
+Dynamic: author
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: platform
+Dynamic: requires-python
+Dynamic: summary
