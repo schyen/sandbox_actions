@@ -1,26 +1,28 @@
-name: Validate PR Label
+name: Validate PR Labels
 
 on:
   pull_request:
-    types: [opened, labeled, unlabeled, synchronize]
+    types:
+      - opened
+      - synchronize
+      - labeled
+      - unlabeled
 
 jobs:
   validate-labels:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate labels (require exactly one of: feat, fix, break)
+      - name: Check for exactly one of: fix, feat, break
         run: |
           labels_json='${{ toJson(github.event.pull_request.labels) }}'
           echo "Labels JSON: $labels_json"
-      
-          # Extract all special labels from JSON (match name field only)
-          special_labels=$(echo "$labels_json" | grep -o '"name":"[^"]*"' | grep -E '"name":"(feat|fix|break)"' | wc -l)
-          
-          echo "Found $special_labels special label(s)"
-      
-          if [ "$special_labels" -eq 1 ]; then
-            echo "✅ Exactly one valid label (feat/fix/break) found."
+
+          special_count=$(echo "$labels_json" | grep -o '"name":"[^"]*"' | grep -E '"name":"(fix|feat|break)"' | wc -l)
+          echo "Found $special_count special label(s)"
+
+          if [ "$special_count" -eq 1 ]; then
+            echo "✅ Exactly one valid label found."
           else
-            echo "❌ PR must have exactly one of: feat, fix, or break. Found $special_labels."
+            echo "❌ PR must have exactly one of: fix, feat, or break."
             exit 1
           fi
