@@ -8,14 +8,19 @@ jobs:
   validate-labels:
     runs-on: ubuntu-latest
     steps:
-      - name: Require one of fix/feat/break labels
+      - name: Validate labels (require exactly one of: feat, fix, break)
         run: |
-          labels=$(echo "${{ toJson(github.event.pull_request.labels) }}" | jq -r '.[].name')
-          echo "Found labels: $labels"
-
-          if echo "$labels" | grep -Eq '^(fix|feat|break)$' || echo "$labels" | grep -E '\b(fix|feat|break)\b'; then
-            echo "✅ Valid label present"
+          labels_json='${{ toJson(github.event.pull_request.labels) }}'
+          echo "Labels JSON: $labels_json"
+      
+          # Extract all special labels from JSON (match name field only)
+          special_labels=$(echo "$labels_json" | grep -o '"name":"[^"]*"' | grep -E '"name":"(feat|fix|break)"' | wc -l)
+          
+          echo "Found $special_labels special label(s)"
+      
+          if [ "$special_labels" -eq 1 ]; then
+            echo "✅ Exactly one valid label (feat/fix/break) found."
           else
-            echo "❌ Pull request must include one of: fix, feat, break"
+            echo "❌ PR must have exactly one of: feat, fix, or break. Found $special_labels."
             exit 1
           fi
