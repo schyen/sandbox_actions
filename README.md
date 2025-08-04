@@ -9,5 +9,5 @@ Workflow updates the version number in setup.py now
 
 PRs must contain only one of "break" "feat" or "fix" and this workflow is triggered every time a PR label is changed
 
-Let's demo again 2
+Let's demo again 3
 
