@@ -1,11 +1,9 @@
-name: PR Reminder Emails
+name: Weekly PR Reminder Emails
 
 on:
   schedule:
     # Weekly personalised reminders: Mondays at 09:00 UTC
     - cron: "0 9 * * 1"
-    # Fortnightly team digest: every other Monday at 09:15 UTC
-    - cron: "15 9 */14 * 1"
   workflow_dispatch:
 
 jobs:
@@ -13,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       assigneeMap: ${{ steps.collect.outputs.assigneeMap }}
-      teamDigest: ${{ steps.collect.outputs.teamDigest }}
     steps:
       - name: Collect PRs and assignment dates
         id: collect
@@ -22,7 +19,6 @@ jobs:
           script: |
             const {owner, repo} = context.repo;
             const assigneeMap = {};
-            const teamList = [];
 
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner,
@@ -63,25 +59,13 @@ jobs:
                   assignedDate: assignedDate ? new Date(assignedDate).toUTCString() : "Unknown",
                   updated: new Date(pr.updated_at).toUTCString()
                 });
-
-                teamList.push({
-                  assignee: assignee.login,
-                  number: pr.number,
-                  title: pr.title,
-                  url: pr.html_url,
-                  assignedDate: assignedDate ? new Date(assignedDate).toUTCString() : "Unknown",
-                  updated: new Date(pr.updated_at).toUTCString()
-                });
               }
             }
 
-            // Prepare outputs
             core.setOutput("assigneeMap", JSON.stringify(assigneeMap));
-            core.setOutput("teamDigest", JSON.stringify(teamList));
 
   personalised:
     needs: collect-prs
-    if: github.event.schedule == '0 9 * * 1'  # only run weekly
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -92,22 +76,31 @@ jobs:
         run: |
           data='${{ needs.collect-prs.outputs.assigneeMap }}'
           prs=$(jq -c --arg assignee "${{ matrix.assignee }}" '.[$assignee]' <<< "$data")
-          body="👋 Hello @${{ matrix.assignee }},
 
-Here are the PRs currently assigned to you:
+          {
+            echo "body<<EOF"
+            echo "👋 Hello @${{ matrix.assignee }},"
+            echo
+            echo "Here are the PRs currently assigned to you:"
+            echo
+            if [ "$prs" = "null" ]; then
+              echo "🎉 No open PRs assigned to you."
+            else
+              echo "$prs" | jq -c '.[]' | while read row; do
+                num=$(jq -r '.number' <<< "$row")
+                title=$(jq -r '.title' <<< "$row")
+                url=$(jq -r '.url' <<< "$row")
+                assigned=$(jq -r '.assignedDate' <<< "$row")
+                updated=$(jq -r '.updated' <<< "$row")
 
-"
-          for row in $(echo "$prs" | jq -c '.[]'); do
-            num=$(jq -r '.number' <<< "$row")
-            title=$(jq -r '.title' <<< "$row")
-            url=$(jq -r '.url' <<< "$row")
-            assigned=$(jq -r '.assignedDate' <<< "$row")
-            updated=$(jq -r '.updated' <<< "$row")
-            body+=" - #$num $title ($url)\n   • Assigned: $assigned\n   • Last updated: $updated\n\n"
-          done
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$body" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+                echo "- #$num $title ($url)"
+                echo "   • Assigned: $assigned"
+                echo "   • Last updated: $updated"
+                echo
+              done
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Send personalised email
         uses: dawidd6/action-send-mail@v3
@@ -120,43 +113,3 @@ Here are the PRs currently assigned to you:
           to: ${{ secrets['EMAIL_' + matrix.assignee] }}
           from: "github-actions@${{ github.repository }}"
           body: ${{ steps.build.outputs.body }}
-
-  team-digest:
-    needs: collect-prs
-    if: github.event.schedule == '15 9 */14 * 1'  # only run fortnightly
-    runs-on: ubuntu-latest
-    steps:
-      - name: Build team digest
-        id: build
-        run: |
-          data='${{ needs.collect-prs.outputs.teamDigest }}'
-          body="📢 Fortnightly PR Digest for ${{ github.repository }}
-
-Here are all open PRs with their assignees:
-
-"
-          for row in $(echo "$data" | jq -c '.[]'); do
-            assignee=$(jq -r '.assignee' <<< "$row")
-            num=$(jq -r '.number' <<< "$row")
-            title=$(jq -r '.title' <<< "$row")
-            url=$(jq -r '.url' <<< "$row")
-            assigned=$(jq -r '.assignedDate' <<< "$row")
-            updated=$(jq -r '.updated' <<< "$row")
-            body+=" - #$num $title ($url)\n   • Assignee: @$assignee\n   • Assigned: $assigned\n   • Last updated: $updated\n\n"
-          done
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$body" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Send digest email
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "Fortnightly GitHub PR Digest – ${{ github.repository }}"
-          to: ${{ secrets.TEAM_EMAIL }}
-          from: "github-actions@${{ github.repository }}"
-          body: ${{ steps.build.outputs.body }}
-+++++
