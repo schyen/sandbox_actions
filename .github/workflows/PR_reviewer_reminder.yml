@@ -8,8 +8,7 @@ on:
 
 env:
   # Contributor emails from secrets
-  EMAIL_janedoe: ${{ secrets.EMAIL_janedoe }}
-  EMAIL_devGuy42: ${{ secrets.EMAIL_devGuy42 }}
+  EMAIL_schyen: ${{ secrets.EMAIL_schyen }}
   # Add more contributors here
 
 jobs:
