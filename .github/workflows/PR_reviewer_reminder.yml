@@ -8,7 +8,8 @@ on:
 
 env:
   # Contributor emails from secrets
-  EMAIL_schyen: ${{ secrets.EMAIL_schyen }}
+  EMAIL_janedoe: ${{ secrets.EMAIL_janedoe }}
+  EMAIL_devGuy42: ${{ secrets.EMAIL_devGuy42 }}
   # Add more contributors here
 
 jobs:
@@ -69,16 +70,22 @@ jobs:
 
             core.setOutput("assigneeMap", JSON.stringify(assigneeMap))
 
-  - name: Prepare matrix
-  id: matrix
-  run: |
-    assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
-    if [ -z "$assignees" ]; then
-      echo "matrix-json=[]" >> $GITHUB_OUTPUT
-    else
-      matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
-      echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
-    fi
+  prepare-matrix:
+    needs: collect-prs
+    runs-on: ubuntu-latest
+    outputs:
+      matrix-json: ${{ steps.matrix.outputs.matrix-json }}
+    steps:
+      - name: Prepare matrix
+        id: matrix
+        run: |
+          assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
+          if [ -z "$assignees" ]; then
+            echo "matrix-json=[]" >> $GITHUB_OUTPUT
+          else
+            matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
+            echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
+          fi
 
   personalised-emails:
     needs: prepare-matrix
@@ -138,7 +145,7 @@ jobs:
         id: email
         run: |
           declare -A emails
-          emails=( ["schyen"]="$EMAIL_schyen" )
+          emails=( ["janedoe"]="$EMAIL_janedoe" ["devGuy42"]="$EMAIL_devGuy42" )
           recipient=${emails["${{ matrix.assignee }}"]}
 
           if [ -z "$recipient" ]; then
