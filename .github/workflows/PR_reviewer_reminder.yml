@@ -69,21 +69,16 @@ jobs:
 
             core.setOutput("assigneeMap", JSON.stringify(assigneeMap))
 
-  prepare-matrix:
-    needs: collect-prs
-    runs-on: ubuntu-latest
-    outputs:
-      matrix-json: ${{ steps.matrix.outputs.matrix-json }}
-    steps:
-      - name: Prepare matrix
-        id: matrix
-        run: |
-          assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
-          if [ -z "$assignees" ]; then
-            echo "matrix-json=[]" >> $GITHUB_OUTPUT
-          else
-            matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
-            echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
+  - name: Prepare matrix
+  id: matrix
+  run: |
+    assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
+    if [ -z "$assignees" ]; then
+      echo "matrix-json=[]" >> $GITHUB_OUTPUT
+    else
+      matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
+      echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
+    fi
 
   personalised-emails:
     needs: prepare-matrix
