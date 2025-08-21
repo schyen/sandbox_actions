@@ -6,6 +6,12 @@ on:
     - cron: "0 9 * * 1"
   workflow_dispatch:
 
+env:
+  # Map each contributor's email to an env variable
+  EMAIL_janedoe: ${{ secrets.EMAIL_janedoe }}
+  EMAIL_devGuy42: ${{ secrets.EMAIL_devGuy42 }}
+  # Add more contributors as needed
+
 jobs:
   collect-prs:
     runs-on: ubuntu-latest
@@ -74,7 +80,6 @@ jobs:
         id: matrix
         run: |
           assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
-          # Convert newline-separated usernames to JSON array
           matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
           echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
 
@@ -124,6 +129,7 @@ jobs:
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "Weekly GitHub PRs assigned to you – ${{ github.repository }}"
-          to: ${{ secrets['EMAIL_' + matrix.assignee] }}
+          # Use env lookup for dynamic assignee email
+          to: ${{ env['EMAIL_' + matrix.assignee] }}
           from: "github-actions@${{ github.repository }}"
           body: ${{ steps.build.outputs.body }}
