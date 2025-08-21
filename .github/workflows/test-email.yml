@@ -15,7 +15,7 @@ jobs:
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "✅ GitHub Actions Email Test"
-          to: ${{ secrets.TEAM_EMAIL }}
+          to: ${{ secrets.EMAIL_schyen }}
           from: "github-actions@${{ github.repository }}"
           body: |
             Hello 👋,
