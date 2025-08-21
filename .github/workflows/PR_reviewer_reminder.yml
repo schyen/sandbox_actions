@@ -8,7 +8,8 @@ on:
 
 env:
   # Contributor emails from secrets
-  EMAIL_schyen: ${{ secrets.EMAIL_schyen }}
+  EMAIL_janedoe: ${{ secrets.EMAIL_janedoe }}
+  EMAIL_devGuy42: ${{ secrets.EMAIL_devGuy42 }}
   # Add more contributors here
 
 jobs:
@@ -79,8 +80,11 @@ jobs:
         id: matrix
         run: |
           assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
-          matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
-          echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
+          if [ -z "$assignees" ]; then
+            echo "matrix-json=[]" >> $GITHUB_OUTPUT
+          else
+            matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
+            echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
 
   personalised-emails:
     needs: prepare-matrix
@@ -89,6 +93,12 @@ jobs:
       matrix:
         assignee: ${{ fromJSON(needs.prepare-matrix.outputs.matrix-json) }}
     steps:
+      - name: Skip empty matrix
+        if: ${{ matrix.assignee == '' }}
+        run: |
+          echo "No assignees to email, exiting"
+          exit 0
+
       - name: Build personalised email
         id: build
         run: |
@@ -124,8 +134,14 @@ jobs:
         id: email
         run: |
           declare -A emails
-          emails=( ["schyen"]="$EMAIL_schyen" )
+          emails=( ["janedoe"]="$EMAIL_janedoe" ["devGuy42"]="$EMAIL_devGuy42" )
           recipient=${emails["${{ matrix.assignee }}"]}
+
+          if [ -z "$recipient" ]; then
+            echo "No email defined for ${{ matrix.assignee }}, skipping"
+            exit 0
+          fi
+
           echo "recipient=$recipient" >> $GITHUB_OUTPUT
 
       - name: Send personalised email
