@@ -64,23 +64,26 @@ jobs:
 
             core.setOutput("assigneeMap", JSON.stringify(assigneeMap))
 
-  personalised:
+  prepare-matrix:
     needs: collect-prs
     runs-on: ubuntu-latest
+    outputs:
+      matrix-json: ${{ steps.matrix.outputs.matrix-json }}
     steps:
       - name: Prepare matrix
         id: matrix
         run: |
           assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
-          echo "assignees=$assignees" >> $GITHUB_OUTPUT
+          # Convert newline-separated usernames to JSON array
+          matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
+          echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
 
-      - name: Debug matrix
-        run: |
-          echo "Assignees: ${{ steps.matrix.outputs.assignees }}"
-
+  personalised-emails:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        assignee: ${{ fromJSON('["' + replace(steps.matrix.outputs.assignees, '\n', '","') + '"]') }}
+        assignee: ${{ fromJSON(needs.prepare-matrix.outputs.matrix-json) }}
     steps:
       - name: Build personalised email
         id: build
