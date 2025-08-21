@@ -8,8 +8,7 @@ on:
 
 env:
   # Map each contributor's email to an env variable
-  EMAIL_janedoe: ${{ secrets.EMAIL_janedoe }}
-  EMAIL_devGuy42: ${{ secrets.EMAIL_devGuy42 }}
+  EMAIL_schyen: ${{ secrets.EMAIL_schyen }}
   # Add more contributors as needed
 
 jobs:
