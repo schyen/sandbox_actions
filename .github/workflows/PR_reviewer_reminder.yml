@@ -8,7 +8,7 @@ on:
 
 env:
   # Contributor emails from secrets
-  EMAIL_schyen: ${{ secrets.EMAIL_schyen }}
+  EMAIL_janedoe: ${{ secrets.EMAIL_janedoe }}
   EMAIL_devGuy42: ${{ secrets.EMAIL_devGuy42 }}
   # Add more contributors here
 
@@ -24,7 +24,7 @@ jobs:
         with:
           script: |
             const {owner, repo} = context.repo;
-            
+
             // Get all open PRs
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner,
@@ -36,35 +36,140 @@ jobs:
             if (pulls.length === 0) {
               console.log("No open PRs, skipping workflow");
               core.setOutput("assigneeMap", "{}");
-              return;
+            } else {
+              const assigneeMap = {};
+
+              for (const pr of pulls) {
+                if (pr.assignees.length === 0) continue;
+
+                const { data: events } = await github.request(
+                  "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline",
+                  {
+                    owner,
+                    repo,
+                    issue_number: pr.number,
+                    headers: { accept: "application/vnd.github.mockingbird-preview+json" }
+                  }
+                );
+
+                for (const assignee of pr.assignees) {
+                  let assignedDate = null;
+                  for (const ev of events) {
+                    if (ev.event === "assigned" && ev.assignee?.login === assignee.login) {
+                      assignedDate = ev.created_at;
+                    }
+                  }
+
+                  if (!assigneeMap[assignee.login]) {
+                    assigneeMap[assignee.login] = [];
+                  }
+
+                  assigneeMap[assignee.login].push({
+                    number: pr.number,
+                    title: pr.title,
+                    url: pr.html_url,
+                    assignedDate: assignedDate ? new Date(assignedDate).toUTCString() : "Unknown",
+                    updated: new Date(pr.updated_at).toUTCString()
+                  });
+                }
+              }
+
+              core.setOutput("assigneeMap", JSON.stringify(assigneeMap));
             }
 
-            const assigneeMap = {};
-            for (const pr of pulls) {
-              if (pr.assignees.length === 0) continue;
+  prepare-matrix:
+    needs: collect-prs
+    runs-on: ubuntu-latest
+    outputs:
+      matrix-json: ${{ steps.matrix.outputs.matrix-json }}
+    steps:
+      - name: Prepare matrix
+        id: matrix
+        run: |
+          assignees=$(echo '${{ needs.collect-prs.outputs.assigneeMap }}' | jq -r 'keys[]')
+          if [ -z "$assignees" ]; then
+            echo "matrix-json=[]" >> $GITHUB_OUTPUT
+          else
+            matrix_json=$(echo "$assignees" | jq -R -s -c 'split("\n")[:-1]')
+            echo "matrix-json=$matrix_json" >> $GITHUB_OUTPUT
+          fi
 
-              const { data: events } = await github.request(
-                "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline",
-                {
-                  owner,
-                  repo,
-                  issue_number: pr.number,
-                  headers: { accept: "application/vnd.github.mockingbird-preview+json" }
-                }
-              );
+  personalised-emails:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        assignee: ${{ fromJSON(needs.prepare-matrix.outputs.matrix-json) }}
+    steps:
+      - name: Skip empty matrix
+        if: ${{ matrix.assignee == '' }}
+        run: |
+          echo "No assignees to email, exiting"
+          exit 0
 
-              for (const assignee of pr.assignees) {
-                let assignedDate = null;
-                for (const ev of events) {
-                  if (ev.event === "assigned" && ev.assignee?.login === assignee.login) {
-                    assignedDate = ev.created_at;
-                  }
-                }
+      - name: Count PRs for assignee
+        id: check-prs
+        run: |
+          data='${{ needs.collect-prs.outputs.assigneeMap }}'
+          prs=$(jq --arg assignee "${{ matrix.assignee }}" '.[$assignee] // []' <<< "$data")
+          count=$(echo "$prs" | jq 'length')
+          echo "pr_count=$count" >> $GITHUB_OUTPUT
 
-                if (!assigneeMap[assignee.login]) {
-                  assigneeMap[assignee.login] = [];
-                }
+      - name: Exit if no PRs assigned
+        if: ${{ steps.check-prs.outputs.pr_count == '0' }}
+        run: |
+          echo "No PRs assigned to ${{ matrix.assignee }}, skipping email"
+          exit 0
 
-                assigneeMap[assignee.login].push({
-                  number: pr.number,
-                  title:
+      - name: Build personalised email
+        id: build
+        run: |
+          data='${{ needs.collect-prs.outputs.assigneeMap }}'
+          prs=$(jq -c --arg assignee "${{ matrix.assignee }}" '.[$assignee]' <<< "$data")
+
+          {
+            echo "body<<EOF"
+            echo "👋 Hello @${{ matrix.assignee }},"
+            echo
+            echo "Here are the PRs currently assigned to you:"
+            echo
+            echo "$prs" | jq -c '.[]' | while read row; do
+              num=$(jq -r '.number' <<< "$row")
+              title=$(jq -r '.title' <<< "$row")
+              url=$(jq -r '.url' <<< "$row")
+              assigned=$(jq -r '.assignedDate' <<< "$row")
+              updated=$(jq -r '.updated' <<< "$row")
+
+              echo "- #$num $title ($url)"
+              echo "   • Assigned: $assigned"
+              echo "   • Last updated: $updated"
+              echo
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Determine recipient email
+        id: email
+        run: |
+          declare -A emails
+          emails=( ["janedoe"]="$EMAIL_janedoe" ["devGuy42"]="$EMAIL_devGuy42" )
+          recipient=${emails["${{ matrix.assignee }}"]}
+
+          if [ -z "$recipient" ]; then
+            echo "No email defined for ${{ matrix.assignee }}, skipping"
+            exit 0
+          fi
+
+          echo "recipient=$recipient" >> $GITHUB_OUTPUT
+
+      - name: Send personalised email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Weekly GitHub PRs assigned to you – ${{ github.repository }}"
+          to: ${{ steps.email.outputs.recipient }}
+          from: "github-actions@${{ github.repository }}"
+          body: ${{ steps.build.outputs.body }}
