@@ -8,8 +8,7 @@ on:
 
 env:
   # Contributor emails from secrets
-  EMAIL_janedoe: ${{ secrets.EMAIL_janedoe }}
-  EMAIL_devGuy42: ${{ secrets.EMAIL_devGuy42 }}
+  EMAIL_schyen: ${{ secrets.EMAIL_schyen }}
   # Add more contributors here
 
 jobs:
@@ -152,7 +151,7 @@ jobs:
         id: email
         run: |
           declare -A emails
-          emails=( ["janedoe"]="$EMAIL_janedoe" ["devGuy42"]="$EMAIL_devGuy42" )
+          emails=( ["schyen"]="$EMAIL_schyen" ["devGuy42"]="$EMAIL_devGuy42" )
           recipient=${emails["${{ matrix.assignee }}"]}
 
           if [ -z "$recipient" ]; then
