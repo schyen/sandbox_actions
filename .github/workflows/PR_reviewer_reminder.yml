@@ -151,7 +151,7 @@ jobs:
         id: email
         run: |
           declare -A emails
-          emails=( ["schyen"]="$EMAIL_schyen" ["devGuy42"]="$EMAIL_devGuy42" )
+          emails=( ["schyen"]="$EMAIL_schyen" )
           recipient=${emails["${{ matrix.assignee }}"]}
 
           if [ -z "$recipient" ]; then
