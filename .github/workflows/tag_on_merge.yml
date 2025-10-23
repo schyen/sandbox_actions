@@ -94,6 +94,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          # ensure git has an identity for commits (commits still need identity)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
           increment_patch() {
             v="$1"
             v="${v#v}"
@@ -120,26 +124,24 @@ jobs:
             echo "Updating setup.py to version $clean"
 
             # Replace only the numeric version portion while preserving surrounding quotes
-            # This matches your setup.py format: version="1.0.1"
             sed -i -E "s/(version\s*=\s*['\"])[0-9]+\.[0-9]+\.[0-9]+(['\"])/\1$clean\2/" setup.py
 
-            # If no change (already that version), we'll still attempt to tag current HEAD.
+            # If file changed, commit & push; otherwise do nothing
             if git diff --quiet; then
               echo "No changes in setup.py (already set to $clean)"
             else
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
               git add setup.py
-              git commit -m "chore: bump version to ${candidate}" || true
+              git commit -m "chore: bump version to ${candidate}"
               echo "Pushing commit to PR branch ${branch}"
               git push origin "HEAD:${branch}"
             fi
 
-            # create tag locally (delete local if exists) and push to origin
+            # create lightweight tag locally (delete local if exists) and push to origin
             if git rev-parse --verify --quiet "$candidate" >/dev/null; then
               git tag -d "$candidate" || true
             fi
-            git tag -a "$candidate" -m "Release $candidate"
+            # lightweight tag (no annotation)
+            git tag "$candidate"
 
             echo "Pushing tag $candidate to origin"
             if git push origin "$candidate"; then
@@ -154,6 +156,7 @@ jobs:
               # loop will try again: check existence -> update setup.py (new commit) -> push -> try tag
             fi
           done
+
 
       - name: Output result
         run: |
