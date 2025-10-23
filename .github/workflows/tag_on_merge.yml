@@ -1,8 +1,11 @@
-name: Bump version in PR and create tag
+name: Bump version in PR & ensure tag points to merge commit
 
 on:
   pull_request:
     types: [opened, reopened, edited, labeled, unlabeled, synchronize]
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version_level:
@@ -18,14 +21,17 @@ on:
 permissions:
   contents: write
 
+env:
+  # Optional: if your org blocks GITHUB_TOKEN writes, set a PAT in secrets.PUSH_TOKEN
+  PUSH_TOKEN: ${{ secrets.PUSH_TOKEN || '' }}
+  REPO: ${{ github.repository }}
+
 jobs:
   bump_and_tag:
+    # only run for PR events (not for push events)
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     env:
-      # Optional: set secrets.PUSH_TOKEN (personal access token with repo scope) if your org blocks GITHUB_TOKEN writes
-      PUSH_TOKEN: ${{ secrets.PUSH_TOKEN || '' }}
-      GITHUB_REPOSITORY: ${{ github.repository }}
       PR_BRANCH: ${{ github.head_ref }}
     steps:
       - name: Checkout PR branch (head)
@@ -34,12 +40,11 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Ensure git remote uses token if provided
-        shell: bash
+      - name: Use PAT for pushes if provided
         run: |
           if [ -n "${PUSH_TOKEN}" ]; then
             echo "Using PUSH_TOKEN for pushes"
-            git remote set-url origin https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+            git remote set-url origin https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git
           else
             echo "Using default runner auth (GITHUB_TOKEN)"
           fi
@@ -51,8 +56,8 @@ jobs:
         id: get_latest
         run: |
           latest=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $latest"
           echo "latest_tag=$latest" >> "$GITHUB_OUTPUT"
+          echo "Latest tag: $latest"
 
       - name: Determine initial bump level and candidate tag
         id: determine
@@ -94,10 +99,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # ensure git has an identity for commits (commits still need identity)
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
           increment_patch() {
             v="$1"
             v="${v#v}"
@@ -113,7 +114,7 @@ jobs:
             echo "Checking remote for tag: $candidate"
             git fetch --tags --force
 
-            # Check remote for existence of the candidate tag
+            # check remote for tag existence
             if git ls-remote --tags origin "$candidate" | grep -q "refs/tags/$candidate"; then
               echo "Tag $candidate already exists on remote — incrementing patch and trying again"
               candidate=$(increment_patch "$candidate")
@@ -123,25 +124,25 @@ jobs:
             clean="${candidate#v}"
             echo "Updating setup.py to version $clean"
 
-            # Replace only the numeric version portion while preserving surrounding quotes
+            # Replace only the numeric version portion, preserving quotes (matches your setup.py)
             sed -i -E "s/(version\s*=\s*['\"])[0-9]+\.[0-9]+\.[0-9]+(['\"])/\1$clean\2/" setup.py
 
-            # If file changed, commit & push; otherwise do nothing
             if git diff --quiet; then
-              echo "No changes in setup.py (already set to $clean)"
+              echo "No changes to commit (setup.py already at $clean)"
             else
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
               git add setup.py
-              git commit -m "chore: bump version to ${candidate}"
+              git commit -m "chore: bump version to ${candidate}" || true
               echo "Pushing commit to PR branch ${branch}"
               git push origin "HEAD:${branch}"
             fi
 
-            # create lightweight tag locally (delete local if exists) and push to origin
+            # create (or recreate) local tag and push
             if git rev-parse --verify --quiet "$candidate" >/dev/null; then
               git tag -d "$candidate" || true
             fi
-            # lightweight tag (no annotation)
-            git tag "$candidate"
+            git tag -a "$candidate" -m "Release $candidate"
 
             echo "Pushing tag $candidate to origin"
             if git push origin "$candidate"; then
@@ -150,15 +151,73 @@ jobs:
               echo "final_version=${candidate#v}" >> "$GITHUB_OUTPUT"
               break
             else
-              echo "Tag push failed (race or remote created tag meanwhile). Deleting local tag and retrying with incremented patch."
+              echo "Tag push failed (likely race). Deleting local tag and incrementing patch to retry."
               git tag -d "$candidate" || true
               candidate=$(increment_patch "$candidate")
-              # loop will try again: check existence -> update setup.py (new commit) -> push -> try tag
             fi
           done
-
 
       - name: Output result
         run: |
           echo "Version set in PR: ${{ steps.reserve_and_push.outputs.final_version }}"
-          echo "Tag created: ${{ steps.reserve_and_push.outputs.final_tag }}"
+          echo "Tag created (provisional at PR commit): ${{ steps.reserve_and_push.outputs.final_tag }}"
+
+  repoint_tag_on_push:
+    # only run for push events to main
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from setup.py
+        id: version
+        run: |
+          ver=$(sed -n -E "s/.*version\s*=\s*['\"]([0-9]+\.[0-9]+\.[0-9]+)['\"].*/\1/p" setup.py)
+          if [ -z "$ver" ]; then
+            echo "Could not extract version from setup.py" >&2
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "tag=v$ver" >> "$GITHUB_OUTPUT"
+          echo "Detected version: v$ver"
+
+      - name: Move or create tag to point at merge commit
+        env:
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN || '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          GHTOKEN="${PUSH_TOKEN:-${GITHUB_TOKEN}}"
+          MAIN_SHA=$(git rev-parse HEAD)
+          TAG="${{ steps.version.outputs.tag }}"
+
+          echo "Updating tag $TAG to point to commit $MAIN_SHA"
+
+          # check if tag ref exists
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token $GHTOKEN" \
+            "https://api.github.com/repos/${REPO}/git/refs/tags/${TAG}")
+
+          if [ "$status" = "200" ]; then
+            echo "Tag exists; moving it to new commit"
+            curl -s -X PATCH \
+              -H "Authorization: token $GHTOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -d "{\"sha\":\"${MAIN_SHA}\",\"force\":true}" \
+              "https://api.github.com/repos/${REPO}/git/refs/tags/${TAG}"
+          elif [ "$status" = "404" ]; then
+            echo "Tag not found; creating it at main commit"
+            curl -s -X POST \
+              -H "Authorization: token $GHTOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -d "{\"ref\":\"refs/tags/${TAG}\",\"sha\":\"${MAIN_SHA}\"}" \
+              "https://api.github.com/repos/${REPO}/git/refs"
+          else
+            echo "Unexpected status ${status} from GitHub API when checking tag; aborting"
+            exit 1
+          fi
+
+          echo "✅ Tag ${TAG} now points to the merge commit ${MAIN_SHA}"
